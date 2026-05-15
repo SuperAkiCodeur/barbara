@@ -1,0 +1,10 @@
+app = "barbara"
+primary_region = "cdg"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[[vm]]
+  memory = "256mb"
+  cpu_kind = "shared"
+  cpus = 1
