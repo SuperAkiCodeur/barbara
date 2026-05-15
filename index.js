@@ -1,45 +1,95 @@
-require('dotenv').config();
 const fs = require('fs');
 const path = require('path');
-const { Client, Collection, GatewayIntentBits } = require('discord.js');
+const { Events } = require('discord.js');
 
-const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMembers,
-    GatewayIntentBits.GuildVoiceStates,
-  ],
-});
+const DATA_FILE = path.join(__dirname, '..', 'data', 'selfRoles.json');
 
-client.commands = new Collection();
-
-const commandsPath = path.join(__dirname, 'commands');
-const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
-
-for (const file of commandFiles) {
-  const filePath = path.join(commandsPath, file);
-  const command = require(filePath);
-
-  if ('data' in command && 'execute' in command) {
-    client.commands.set(command.data.name, command);
-    console.log(`Commande chargée : ${command.data.name}`);
-  } else {
-    console.log(`Commande invalide : ${file}`);
-  }
+function readData() {
+  if (!fs.existsSync(DATA_FILE)) return {};
+  return JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
 }
 
-const eventsPath = path.join(__dirname, 'events');
-const eventFiles = fs.readdirSync(eventsPath).filter(file => file.endsWith('.js'));
+module.exports = {
+  name: Events.InteractionCreate,
+  async execute(interaction, client) {
+    console.log('Interaction reçue');
 
-for (const file of eventFiles) {
-  const filePath = path.join(eventsPath, file);
-  const event = require(filePath);
+    if (interaction.isChatInputCommand()) {
+      console.log('Slash command reçue :', interaction.commandName);
 
-  if (event.once) {
-    client.once(event.name, (...args) => event.execute(...args, client));
-  } else {
-    client.on(event.name, (...args) => event.execute(...args, client));
-  }
-}
+      const command = client.commands.get(interaction.commandName);
 
-client.login(process.env.DISCORD_TOKEN);
+      if (!command) {
+        console.error(`Commande introuvable : ${interaction.commandName}`);
+        return;
+      }
+
+      try {
+        await command.execute(interaction);
+      } catch (error) {
+        console.error('Erreur commande slash :', error);
+
+        if (interaction.replied || interaction.deferred) {
+          await interaction.followUp({
+            content: 'Erreur lors de l’exécution de la commande.',
+            ephemeral: true,
+          });
+        } else {
+          await interaction.reply({
+            content: 'Erreur lors de l’exécution de la commande.',
+            ephemeral: true,
+          });
+        }
+      }
+
+      return;
+    }
+
+    if (!interaction.isStringSelectMenu()) return;
+    if (!interaction.customId.startsWith('self_roles_menu_')) return;
+
+    const data = readData();
+    const configuredRoles = data[interaction.guild.id] || [];
+    const configuredRoleIds = configuredRoles.map(role => role.id);
+    const selectedRoleIds = interaction.values;
+    const member = interaction.member;
+
+    const currentChunk = interaction.component.options.map(option => option.value);
+
+    try {
+      for (const roleId of currentChunk) {
+        if (!configuredRoleIds.includes(roleId)) continue;
+
+        const hasRole = member.roles.cache.has(roleId);
+        const shouldHaveRole = selectedRoleIds.includes(roleId);
+
+        if (shouldHaveRole && !hasRole) {
+          await member.roles.add(roleId);
+        }
+
+        if (!shouldHaveRole && hasRole) {
+          await member.roles.remove(roleId);
+        }
+      }
+
+      await interaction.reply({
+        content: 'Tes rôles ont été mis à jour pour cette page du menu.',
+        ephemeral: true,
+      });
+    } catch (error) {
+      console.error('Erreur self roles dynamique :', error);
+
+      if (interaction.replied || interaction.deferred) {
+        await interaction.followUp({
+          content: 'Impossible de mettre à jour tes rôles.',
+          ephemeral: true,
+        });
+      } else {
+        await interaction.reply({
+          content: 'Impossible de mettre à jour tes rôles.',
+          ephemeral: true,
+        });
+      }
+    }
+  },
+};

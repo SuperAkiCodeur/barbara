@@ -28,7 +28,11 @@ module.exports = {
 
   async execute(interaction) {
     const data = readData();
-    const roles = data[interaction.guild.id] || [];
+    const configuredRoles = data[interaction.guild.id] || [];
+
+    const roles = configuredRoles.filter(role =>
+      interaction.guild.roles.cache.has(role.id)
+    );
 
     if (roles.length === 0) {
       return interaction.reply({
@@ -39,6 +43,13 @@ module.exports = {
 
     const memberRoleIds = interaction.member.roles.cache.map(role => role.id);
     const roleChunks = chunkArray(roles, 25);
+
+    if (roleChunks.length > 5) {
+      return interaction.reply({
+        content: 'Il y a trop de rôles configurés pour être affichés dans un seul message.',
+        ephemeral: true,
+      });
+    }
 
     const rows = roleChunks.map((chunk, index) => {
       const menu = new StringSelectMenuBuilder()

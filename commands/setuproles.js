@@ -39,6 +39,7 @@ module.exports = {
 
   async execute(interaction) {
     console.log('setuproles exécuté');
+
     const input = interaction.options.getString('roles', true);
     const matches = [...input.matchAll(/<@&(\d+)>/g)];
     const roleIds = [...new Set(matches.map(match => match[1]))];
@@ -52,7 +53,7 @@ module.exports = {
 
     const roles = roleIds
       .map(roleId => interaction.guild.roles.cache.get(roleId))
-      .filter(Boolean)
+      .filter(role => role && role.id !== interaction.guild.id && !role.managed)
       .map(role => ({
         id: role.id,
         name: role.name,
@@ -60,7 +61,7 @@ module.exports = {
 
     if (roles.length === 0) {
       return interaction.reply({
-        content: 'Les rôles mentionnés sont introuvables sur ce serveur.',
+        content: 'Les rôles mentionnés sont introuvables ou ne peuvent pas être utilisés.',
         ephemeral: true,
       });
     }
