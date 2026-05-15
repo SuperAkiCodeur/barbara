@@ -70,6 +70,18 @@ module.exports = {
       subcommand
         .setName('setup')
         .setDescription('Envoie le menu public de sélection des rôles')
+        .addStringOption(option =>
+          option
+            .setName('message')
+            .setDescription('Texte affiché au-dessus du menu')
+            .setRequired(false)
+        )
+        .addStringOption(option =>
+          option
+            .setName('placeholder')
+            .setDescription('Texte affiché dans le menu')
+            .setRequired(false)
+        )
     )
 
     .addSubcommand(subcommand =>
@@ -171,6 +183,14 @@ module.exports = {
         });
       }
 
+      const customMessage =
+        interaction.options.getString('message') ||
+        'Choisissez vos rôles dans le menu ci-dessous :';
+
+      const customPlaceholder =
+        interaction.options.getString('placeholder') ||
+        'Choisis tes rôles';
+
       const chunks = [];
       for (let i = 0; i < guildRoles.length; i += 25) {
         chunks.push(guildRoles.slice(i, i + 25));
@@ -179,7 +199,7 @@ module.exports = {
       const rows = chunks.map((chunk, index) => {
         const menu = new StringSelectMenuBuilder()
           .setCustomId(`self_roles_menu_${index}`)
-          .setPlaceholder('Choisis tes rôles')
+          .setPlaceholder(customPlaceholder)
           .setMinValues(0)
           .setMaxValues(chunk.length)
           .addOptions(
@@ -194,7 +214,7 @@ module.exports = {
       });
 
       await interaction.channel.send({
-        content: 'Choisissez vos rôles dans le menu ci-dessous :',
+        content: customMessage,
         components: rows,
       });
 
