@@ -53,21 +53,21 @@ module.exports = {
     const configuredRoleIds = configuredRoles.map(role => role.id);
     const selectedRoleIds = interaction.values;
     const member = interaction.member;
-
     const currentChunk = interaction.component.options.map(option => option.value);
 
     try {
       for (const roleId of currentChunk) {
         if (!configuredRoleIds.includes(roleId)) continue;
 
-        if (selectedRoleIds.includes(roleId)) {
-          if (!member.roles.cache.has(roleId)) {
-            await member.roles.add(roleId);
-          }
-        } else {
-          if (member.roles.cache.has(roleId)) {
-            await member.roles.remove(roleId);
-          }
+        const hasRole = member.roles.cache.has(roleId);
+        const shouldHaveRole = selectedRoleIds.includes(roleId);
+
+        if (shouldHaveRole && !hasRole) {
+          await member.roles.add(roleId);
+        }
+
+        if (!shouldHaveRole && hasRole) {
+          await member.roles.remove(roleId);
         }
       }
 
