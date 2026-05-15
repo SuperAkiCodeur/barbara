@@ -6,9 +6,9 @@ module.exports = {
     const member = newState.member || oldState.member;
     if (!member) return;
 
-    const roleId = process.env.ROLE_ID;
+    const roleId = process.env.CHATTING_ROLE_ID;
     if (!roleId) {
-      console.error('ROLE_ID manquant dans le .env');
+      console.error('CHATTING_ROLE_ID manquant dans le .env');
       return;
     }
 
