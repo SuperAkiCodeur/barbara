@@ -34,7 +34,7 @@ module.exports = {
 
   async execute(interaction) {
     const input = interaction.options.getString('roles');
-    const matches = [...input.matchAll(/<@&(\\d+)>/g)];
+    const matches = [...input.matchAll(/<@&(\d+)>/g)];
     const roleIds = [...new Set(matches.map(match => match[1]))];
 
     if (roleIds.length === 0) {
