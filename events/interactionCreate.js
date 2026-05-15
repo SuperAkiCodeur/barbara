@@ -1,6 +1,6 @@
+const { Events } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
-const { Events } = require('discord.js');
 
 const DATA_FILE = path.join(__dirname, '..', 'data', 'selfRoles.json');
 
@@ -11,7 +11,35 @@ function readData() {
 
 module.exports = {
   name: Events.InteractionCreate,
-  async execute(interaction) {
+  async execute(interaction, client) {
+    if (interaction.isChatInputCommand()) {
+      const command = client.commands.get(interaction.commandName);
+      if (!command) {
+        console.error(`Commande introuvable : ${interaction.commandName}`);
+        return;
+      }
+
+      try {
+        await command.execute(interaction);
+      } catch (error) {
+        console.error('Erreur commande slash :', error);
+
+        if (interaction.replied || interaction.deferred) {
+          await interaction.followUp({
+            content: 'Erreur lors de l’exécution de la commande.',
+            ephemeral: true,
+          });
+        } else {
+          await interaction.reply({
+            content: 'Erreur lors de l’exécution de la commande.',
+            ephemeral: true,
+          });
+        }
+      }
+
+      return;
+    }
+
     if (!interaction.isStringSelectMenu()) return;
     if (!interaction.customId.startsWith('self_roles_menu_')) return;
 
@@ -44,10 +72,18 @@ module.exports = {
       });
     } catch (error) {
       console.error('Erreur self roles dynamique :', error);
-      await interaction.reply({
-        content: 'Impossible de mettre à jour tes rôles.',
-        ephemeral: true,
-      });
+
+      if (interaction.replied || interaction.deferred) {
+        await interaction.followUp({
+          content: 'Impossible de mettre à jour tes rôles.',
+          ephemeral: true,
+        });
+      } else {
+        await interaction.reply({
+          content: 'Impossible de mettre à jour tes rôles.',
+          ephemeral: true,
+        });
+      }
     }
   },
 };
