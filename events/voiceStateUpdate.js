@@ -20,12 +20,12 @@ module.exports = {
       if (roleId) {
         if (joinedVoice && !member.roles.cache.has(roleId)) {
           await member.roles.add(roleId);
-          console.log(`✅ Rôle ajouté à ${member.user.tag}`);
+          console.log(`✅ Rôle "Blabla" ajouté à ${member.user.tag}`);
         }
 
         if (leftVoice && member.roles.cache.has(roleId)) {
           await member.roles.remove(roleId);
-          console.log(`❌ Rôle retiré à ${member.user.tag}`);
+          console.log(`❌ Rôle "Blabla" retiré à ${member.user.tag}`);
         }
       } else {
         console.error('CHATTING_ROLE_ID manquant dans le .env');
@@ -69,7 +69,7 @@ module.exports = {
 
         if (isTempChannel && oldChannel.members.size === 0) {
           await oldChannel.delete('Suppression du salon temporaire vide');
-          console.log(`🗑️ Salon supprimé : ${oldChannel.name}`);
+          console.log(`🗑️ Salon temporaire supprimé : ${oldChannel.name}`);
         }
       }
     } catch (error) {
