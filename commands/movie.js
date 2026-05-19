@@ -4,10 +4,11 @@ const {
   SlashCommandBuilder,
   EmbedBuilder,
   PermissionFlagsBits,
+  MessageFlags,
 } = require('discord.js');
 
 const BOOKINGS_FILE = path.join(__dirname, '..', 'data', 'movieBookings.json');
-const OMDB_API_KEY = process.env.OMDB_API_KEY;
+const TMDB_API_KEY = process.env.TMDB_API_KEY;
 const SPECTATOR_ROLE_ID = process.env.SPECTATOR_ROLE_ID;
 
 function readBookings() {
@@ -27,6 +28,14 @@ function parseViewingDate(dateStr, timeStr) {
 
   const fullYear = year < 100 ? 2000 + year : year;
   return new Date(fullYear, month - 1, day, hours, minutes, 0, 0);
+}
+
+function formatRuntime(minutes) {
+  if (!minutes || Number.isNaN(minutes)) return 'Inconnue';
+  const h = Math.floor(minutes / 60);
+  const m = minutes % 60;
+  if (h <= 0) return `${m} min`;
+  return `${h}h ${m.toString().padStart(2, '0')}min`;
 }
 
 module.exports = {
@@ -58,17 +67,17 @@ module.exports = {
     const date = interaction.options.getString('date');
     const heure = interaction.options.getString('heure');
 
-    if (!OMDB_API_KEY) {
+    if (!TMDB_API_KEY) {
       return interaction.reply({
-        content: 'OMDB_API_KEY manquant dans les variables d’environnement.',
-        ephemeral: true,
+        content: 'TMDB_API_KEY manquant dans les variables d’environnement.',
+        flags: MessageFlags.Ephemeral,
       });
     }
 
     if (!SPECTATOR_ROLE_ID) {
       return interaction.reply({
         content: 'SPECTATOR_ROLE_ID manquant dans les variables d’environnement.',
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     }
 
@@ -77,58 +86,99 @@ module.exports = {
     if (isNaN(viewingDate.getTime())) {
       return interaction.reply({
         content: 'Date ou heure invalide. Utilise par exemple 19/05/26 et 21:00.',
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
     }
 
-    const url = `https://www.omdbapi.com/?apikey=${OMDB_API_KEY}&t=${encodeURIComponent(film)}&plot=full`;
-    const response = await fetch(url);
-    const movie = await response.json();
+    try {
+      const searchUrl = `https://api.themoviedb.org/3/search/movie?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(film)}&language=fr-FR&include_adult=false`;
+      const searchResponse = await fetch(searchUrl);
+      const searchData = await searchResponse.json();
 
-    if (!movie || movie.Response === 'False') {
+      if (!searchData.results || searchData.results.length === 0) {
+        return interaction.reply({
+          content: `Aucun film trouvé pour "${film}".`,
+          flags: MessageFlags.Ephemeral,
+        });
+      }
+
+      const bestMatch = searchData.results[0];
+      const movieId = bestMatch.id;
+
+      const detailsUrl = `https://api.themoviedb.org/3/movie/${movieId}?api_key=${TMDB_API_KEY}&language=fr-FR`;
+      const creditsUrl = `https://api.themoviedb.org/3/movie/${movieId}/credits?api_key=${TMDB_API_KEY}&language=fr-FR`;
+
+      const [detailsResponse, creditsResponse] = await Promise.all([
+        fetch(detailsUrl),
+        fetch(creditsUrl),
+      ]);
+
+      const details = await detailsResponse.json();
+      const credits = await creditsResponse.json();
+
+      const director = credits.crew?.find(person => person.job === 'Director');
+      const directorName = director?.name || 'Inconnu';
+
+      const title = details.title || bestMatch.title || film;
+      const overview = details.overview || 'Synopsis indisponible.';
+      const releaseDate = details.release_date
+        ? new Date(details.release_date).toLocaleDateString('fr-FR')
+        : 'Inconnue';
+      const runtime = formatRuntime(details.runtime);
+      const genres = details.genres?.length
+        ? details.genres.map(g => g.name).join(', ')
+        : 'Inconnus';
+
+      const posterUrl = details.poster_path
+        ? `https://image.tmdb.org/t/p/w500${details.poster_path}`
+        : null;
+
+      const embed = new EmbedBuilder()
+        .setTitle(`🎬 ${title}`)
+        .setDescription(overview)
+        .addFields(
+          { name: 'Réalisateur', value: directorName, inline: true },
+          { name: 'Sortie', value: releaseDate, inline: true },
+          { name: 'Durée', value: runtime, inline: true },
+          { name: 'Genres', value: genres, inline: false },
+          { name: 'Visionnage', value: `${date} à ${heure}`, inline: false },
+          { name: 'Billetterie', value: 'Réagis avec 🎟️ pour réserver ta place.', inline: false },
+        )
+        .setColor(0x1f1f1f)
+        .setFooter({ text: 'Cinéma du serveur' });
+
+      if (posterUrl) {
+        embed.setImage(posterUrl);
+      }
+
+      const message = await interaction.channel.send({ embeds: [embed] });
+      await message.react('🎟️');
+
+      const bookings = readBookings();
+      bookings.movies[message.id] = {
+        guildId: interaction.guild.id,
+        channelId: interaction.channel.id,
+        messageId: message.id,
+        roleId: SPECTATOR_ROLE_ID,
+        title,
+        movieId,
+        viewingAt: viewingDate.toISOString(),
+        expiresAt: new Date(viewingDate.getTime() + 12 * 60 * 60 * 1000).toISOString(),
+        users: [],
+      };
+      writeBookings(bookings);
+
+      await interaction.reply({
+        content: 'Annonce cinéma publiée avec billetterie.',
+        flags: MessageFlags.Ephemeral,
+      });
+    } catch (error) {
+      console.error('Erreur /movie avec TMDb :', error);
+
       return interaction.reply({
-        content: `Impossible de trouver le film "${film}".`,
-        ephemeral: true,
+        content: 'Une erreur est survenue avec TMDb.',
+        flags: MessageFlags.Ephemeral,
       });
     }
-
-    const embed = new EmbedBuilder()
-      .setTitle(`🎬 ${movie.Title}`)
-      .setDescription(movie.Plot || 'Synopsis indisponible.')
-      .addFields(
-        { name: 'Réalisateur', value: movie.Director || 'Inconnu', inline: true },
-        { name: 'Sortie', value: movie.Released || 'Inconnue', inline: true },
-        { name: 'Durée', value: movie.Runtime || 'Inconnue', inline: true },
-        { name: 'Genres', value: movie.Genre || 'Inconnus', inline: false },
-        { name: 'Visionnage', value: `${date} à ${heure}`, inline: false },
-        { name: 'Billetterie', value: 'Réagis avec 🎟️ pour réserver ta place.', inline: false },
-      )
-      .setColor(0x1f1f1f)
-      .setFooter({ text: 'Cinéma du serveur' });
-
-    if (movie.Poster && movie.Poster !== 'N/A') {
-      embed.setImage(movie.Poster);
-    }
-
-    const message = await interaction.channel.send({ embeds: [embed] });
-    await message.react('🎟️');
-
-    const bookings = readBookings();
-    bookings.movies[message.id] = {
-      guildId: interaction.guild.id,
-      channelId: interaction.channel.id,
-      messageId: message.id,
-      roleId: SPECTATOR_ROLE_ID,
-      title: movie.Title,
-      viewingAt: viewingDate.toISOString(),
-      expiresAt: new Date(viewingDate.getTime() + 12 * 60 * 60 * 1000).toISOString(),
-      users: [],
-    };
-    writeBookings(bookings);
-
-    await interaction.reply({
-      content: 'Annonce cinéma publiée avec billetterie.',
-      ephemeral: true,
-    });
   },
 };
