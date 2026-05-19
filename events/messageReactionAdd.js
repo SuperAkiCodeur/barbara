@@ -18,32 +18,50 @@ function writeBookings(data) {
 module.exports = {
   name: Events.MessageReactionAdd,
   async execute(reaction, user) {
-    if (user.bot) return;
+    try {
+      console.log('Réaction détectée');
 
-    if (reaction.partial) await reaction.fetch();
-    if (reaction.message.partial) await reaction.message.fetch();
+      if (user.bot) return;
 
-    if (reaction.emoji.name !== '🎟️') return;
-    if (!reaction.message.guild) return;
+      if (reaction.partial) await reaction.fetch();
+      if (reaction.message.partial) await reaction.message.fetch();
 
-    const bookings = readBookings();
-    const booking = bookings.movies[reaction.message.id];
-    if (!booking) return;
+      console.log('Emoji :', reaction.emoji.name);
+      console.log('Message ID :', reaction.message.id);
+      console.log('User ID :', user.id);
 
-    const guild = reaction.message.guild;
-    const member = await guild.members.fetch(user.id).catch(() => null);
-    if (!member) return;
+      if (reaction.emoji.name !== '🎟️') return;
+      if (!reaction.message.guild) return;
 
-    const role = guild.roles.cache.get(booking.roleId);
-    if (!role) return;
+      const bookings = readBookings();
+      const booking = bookings.movies[reaction.message.id];
 
-    if (!booking.users.includes(user.id)) {
-      booking.users.push(user.id);
-      writeBookings(bookings);
-    }
+      console.log('Booking trouvé :', !!booking);
 
-    if (!member.roles.cache.has(role.id)) {
-      await member.roles.add(role).catch(console.error);
+      if (!booking) return;
+
+      const guild = reaction.message.guild;
+      const member = await guild.members.fetch(user.id).catch(() => null);
+
+      console.log('Member trouvé :', !!member);
+
+      if (!member) return;
+
+      const role = guild.roles.cache.get(booking.roleId);
+
+      console.log('Role trouvé :', !!role, booking.roleId);
+
+      if (!role) return;
+
+      if (!booking.users.includes(user.id)) {
+        booking.users.push(user.id);
+        writeBookings(bookings);
+      }
+
+      await member.roles.add(role);
+      console.log(`Rôle ajouté à ${user.tag}`);
+    } catch (error) {
+      console.error('Erreur messageReactionAdd :', error);
     }
   },
 };
