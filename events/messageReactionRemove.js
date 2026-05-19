@@ -28,32 +28,40 @@ function hasActiveWatchPartyForUser(watchPartiesData, guildId, userId, now = Dat
 module.exports = {
   name: Events.MessageReactionRemove,
   async execute(reaction, user) {
-    if (user.bot) return;
+    try {
+      if (user.bot) return;
 
-    if (reaction.partial) await reaction.fetch();
-    if (reaction.message.partial) await reaction.message.fetch();
+      if (reaction.partial) await reaction.fetch();
+      if (reaction.message.partial) await reaction.message.fetch();
 
-    if (reaction.emoji.name !== '🎟️') return;
-    if (!reaction.message.guild) return;
+      if (reaction.emoji.name !== '🎟️') return;
+      if (!reaction.message.guild) return;
 
-    const watchPartiesData = readWatchPartiesData();
-    const watchParty = watchPartiesData.watchParties[String(reaction.message.id)];
-    if (!watchParty) return;
+      const watchPartiesData = readWatchPartiesData();
+      const watchParty = watchPartiesData.watchParties[String(reaction.message.id)];
+      if (!watchParty) return;
 
-    watchParty.users = watchParty.users.filter(id => id !== user.id);
-    writeWatchPartiesData(watchPartiesData);
+      watchParty.users = watchParty.users.filter(id => id !== user.id);
+      writeWatchPartiesData(watchPartiesData);
 
-    const guild = reaction.message.guild;
-    const member = await guild.members.fetch(user.id).catch(() => null);
-    if (!member) return;
+      const guild = reaction.message.guild;
+      const member = await guild.members.fetch(user.id).catch(() => null);
+      if (!member) return;
 
-    const role = guild.roles.cache.get(watchParty.roleId);
-    if (!role) return;
+      const role = guild.roles.cache.get(watchParty.roleId) || await guild.roles.fetch(watchParty.roleId).catch(() => null);
+      if (!role) return;
 
-    const stillHasActiveWatchParty = hasActiveWatchPartyForUser(watchPartiesData, guild.id, user.id);
+      const stillHasActiveWatchParty = hasActiveWatchPartyForUser(
+        watchPartiesData,
+        guild.id,
+        user.id
+      );
 
-    if (!stillHasActiveWatchParty && member.roles.cache.has(role.id)) {
-      await member.roles.remove(role).catch(console.error);
+      if (!stillHasActiveWatchParty && member.roles.cache.has(role.id)) {
+        await member.roles.remove(role).catch(console.error);
+      }
+    } catch (error) {
+      console.error('Erreur messageReactionRemove :', error);
     }
   },
 };

@@ -200,8 +200,10 @@ module.exports = {
         mediaType: type,
         mediaId,
         viewingAt: viewingDate.toISOString(),
-        // expiresAt: new Date(viewingDate.getTime() + 12 * 60 * 60 * 1000).toISOString(),
-        expiresAt: new Date(viewingDate.getTime() + 1 * 60 * 1000).toISOString(),
+        expiresAt: new Date(viewingDate.getTime() + 1 * 60 * 1000).toISOString(), // test: 1 min
+        deleteMessageAt: new Date(viewingDate.getTime() + 12 * 60 * 60 * 1000).toISOString(),
+        roleCleanedUp: false,
+        messageDeleted: false,
         users: [],
       };
       writeWatchPartiesData(watchPartiesData);

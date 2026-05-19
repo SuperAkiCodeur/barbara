@@ -35,7 +35,7 @@ module.exports = {
       const member = await guild.members.fetch(user.id).catch(() => null);
       if (!member) return;
 
-      const role = guild.roles.cache.get(watchParty.roleId);
+      const role = guild.roles.cache.get(watchParty.roleId) || await guild.roles.fetch(watchParty.roleId).catch(() => null);
       if (!role) return;
 
       if (!watchParty.users.includes(user.id)) {
