@@ -30,6 +30,8 @@ for (const file of commandFiles) {
 
   if ('data' in command && 'execute' in command) {
     client.commands.set(command.data.name, command);
+  } else {
+    console.warn(`[WARNING] La commande ${file} n'a pas "data" ou "execute".`);
   }
 }
 
@@ -46,30 +48,5 @@ for (const file of eventFiles) {
     client.on(event.name, (...args) => event.execute(...args));
   }
 }
-
-client.on('interactionCreate', async interaction => {
-  if (!interaction.isChatInputCommand()) return;
-
-  const command = client.commands.get(interaction.commandName);
-  if (!command) return;
-
-  try {
-    await command.execute(interaction);
-  } catch (error) {
-    console.error(error);
-
-    if (interaction.replied || interaction.deferred) {
-      await interaction.followUp({
-        content: 'Une erreur est survenue pendant l’exécution de la commande.',
-        ephemeral: true,
-      });
-    } else {
-      await interaction.reply({
-        content: 'Une erreur est survenue pendant l’exécution de la commande.',
-        ephemeral: true,
-      });
-    }
-  }
-});
 
 client.login(process.env.DISCORD_TOKEN);
