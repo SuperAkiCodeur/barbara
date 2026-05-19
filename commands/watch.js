@@ -7,19 +7,19 @@ const {
   MessageFlags,
 } = require('discord.js');
 
-const BOOKINGS_FILE = path.join(__dirname, '..', 'data', 'movieBookings.json');
+const WATCH_PARTIES_FILE = path.join(__dirname, '..', 'data', 'watchParties.json');
 const TMDB_API_KEY = process.env.TMDB_API_KEY;
 const SPECTATOR_ROLE_ID = process.env.SPECTATOR_ROLE_ID;
 
-function readBookings() {
-  if (!fs.existsSync(BOOKINGS_FILE)) return { movies: {} };
-  return JSON.parse(fs.readFileSync(BOOKINGS_FILE, 'utf8'));
+function readWatchPartiesData() {
+  if (!fs.existsSync(WATCH_PARTIES_FILE)) return { watchParties: {} };
+  return JSON.parse(fs.readFileSync(WATCH_PARTIES_FILE, 'utf8'));
 }
 
-function writeBookings(data) {
-  const dir = path.dirname(BOOKINGS_FILE);
+function writeWatchPartiesData(watchPartiesData) {
+  const dir = path.dirname(WATCH_PARTIES_FILE);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(BOOKINGS_FILE, JSON.stringify(data, null, 2), 'utf8');
+  fs.writeFileSync(WATCH_PARTIES_FILE, JSON.stringify(watchPartiesData, null, 2), 'utf8');
 }
 
 function parseViewingDate(dateStr, timeStr) {
@@ -38,14 +38,29 @@ function formatRuntime(minutes) {
   return `${h}h ${m.toString().padStart(2, '0')}min`;
 }
 
+function formatDate(dateString) {
+  if (!dateString) return 'Inconnue';
+  return new Date(dateString).toLocaleDateString('fr-FR');
+}
+
 module.exports = {
   data: new SlashCommandBuilder()
-    .setName('movie')
-    .setDescription('Publie une annonce de séance cinéma')
+    .setName('watch')
+    .setDescription('Publie une annonce de séance pour un film ou une série')
     .addStringOption(option =>
       option
-        .setName('film')
-        .setDescription('Titre du film')
+        .setName('type')
+        .setDescription('Type de contenu')
+        .setRequired(true)
+        .addChoices(
+          { name: 'Film', value: 'movie' },
+          { name: 'Série', value: 'tv' }
+        )
+    )
+    .addStringOption(option =>
+      option
+        .setName('titre')
+        .setDescription('Titre du film ou de la série')
         .setRequired(true)
     )
     .addStringOption(option =>
@@ -63,7 +78,8 @@ module.exports = {
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageGuild),
 
   async execute(interaction) {
-    const film = interaction.options.getString('film');
+    const type = interaction.options.getString('type');
+    const titre = interaction.options.getString('titre');
     const date = interaction.options.getString('date');
     const heure = interaction.options.getString('heure');
 
@@ -91,22 +107,22 @@ module.exports = {
     }
 
     try {
-      const searchUrl = `https://api.themoviedb.org/3/search/movie?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(film)}&language=fr-FR&include_adult=false`;
+      const searchUrl = `https://api.themoviedb.org/3/search/${type}?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(titre)}&language=fr-FR&include_adult=false`;
       const searchResponse = await fetch(searchUrl);
       const searchData = await searchResponse.json();
 
       if (!searchData.results || searchData.results.length === 0) {
         return interaction.reply({
-          content: `Aucun film trouvé pour "${film}".`,
+          content: `Aucun résultat trouvé pour "${titre}".`,
           flags: MessageFlags.Ephemeral,
         });
       }
 
       const bestMatch = searchData.results[0];
-      const movieId = bestMatch.id;
+      const mediaId = bestMatch.id;
 
-      const detailsUrl = `https://api.themoviedb.org/3/movie/${movieId}?api_key=${TMDB_API_KEY}&language=fr-FR`;
-      const creditsUrl = `https://api.themoviedb.org/3/movie/${movieId}/credits?api_key=${TMDB_API_KEY}&language=fr-FR`;
+      const detailsUrl = `https://api.themoviedb.org/3/${type}/${mediaId}?api_key=${TMDB_API_KEY}&language=fr-FR`;
+      const creditsUrl = `https://api.themoviedb.org/3/${type}/${mediaId}/credits?api_key=${TMDB_API_KEY}&language=fr-FR`;
 
       const [detailsResponse, creditsResponse] = await Promise.all([
         fetch(detailsUrl),
@@ -116,15 +132,21 @@ module.exports = {
       const details = await detailsResponse.json();
       const credits = await creditsResponse.json();
 
-      const director = credits.crew?.find(person => person.job === 'Director');
-      const directorName = director?.name || 'Inconnu';
+      const isMovie = type === 'movie';
 
-      const title = details.title || bestMatch.title || film;
+      const title = isMovie
+        ? (details.title || bestMatch.title || titre)
+        : (details.name || bestMatch.name || titre);
+
       const overview = details.overview || 'Synopsis indisponible.';
-      const releaseDate = details.release_date
-        ? new Date(details.release_date).toLocaleDateString('fr-FR')
-        : 'Inconnue';
-      const runtime = formatRuntime(details.runtime);
+      const releaseDate = isMovie
+        ? formatDate(details.release_date)
+        : formatDate(details.first_air_date);
+
+      const runtime = isMovie
+        ? formatRuntime(details.runtime)
+        : formatRuntime(details.episode_run_time?.[0]);
+
       const genres = details.genres?.length
         ? details.genres.map(g => g.name).join(', ')
         : 'Inconnus';
@@ -133,13 +155,27 @@ module.exports = {
         ? `https://image.tmdb.org/t/p/w500${details.poster_path}`
         : null;
 
+      let authorLabel = 'Réalisateur';
+      let authorValue = 'Inconnu';
+
+      if (isMovie) {
+        const director = credits.crew?.find(person => person.job === 'Director');
+        authorValue = director?.name || 'Inconnu';
+      } else {
+        authorLabel = 'Créateur';
+        if (details.created_by?.length) {
+          authorValue = details.created_by.map(person => person.name).join(', ');
+        }
+      }
+
       const embed = new EmbedBuilder()
-        .setTitle(`🎬 ${title}`)
+        .setTitle(title)
         .setDescription(overview)
         .addFields(
-          { name: 'Réalisateur', value: directorName, inline: true },
-          { name: 'Sortie', value: releaseDate, inline: true },
-          { name: 'Durée', value: runtime, inline: true },
+          { name: 'Type', value: isMovie ? 'Film' : 'Série', inline: true },
+          { name: authorLabel, value: authorValue, inline: true },
+          { name: isMovie ? 'Sortie' : 'Première diffusion', value: releaseDate, inline: true },
+          { name: isMovie ? 'Durée' : 'Durée épisode', value: runtime, inline: true },
           { name: 'Genres', value: genres, inline: false },
           { name: 'Visionnage', value: `${date} à ${heure}`, inline: false },
           { name: 'Billetterie', value: 'Réagis avec 🎟️ pour réserver ta place.', inline: false },
@@ -154,26 +190,28 @@ module.exports = {
       const message = await interaction.channel.send({ embeds: [embed] });
       await message.react('🎟️');
 
-      const bookings = readBookings();
-      bookings.movies[message.id] = {
+      const watchPartiesData = readWatchPartiesData();
+      watchPartiesData.watchParties[message.id] = {
         guildId: interaction.guild.id,
         channelId: interaction.channel.id,
         messageId: message.id,
         roleId: SPECTATOR_ROLE_ID,
         title,
-        movieId,
+        mediaType: type,
+        mediaId,
         viewingAt: viewingDate.toISOString(),
-        expiresAt: new Date(viewingDate.getTime() + 12 * 60 * 60 * 1000).toISOString(),
+        // expiresAt: new Date(viewingDate.getTime() + 12 * 60 * 60 * 1000).toISOString(),
+        expiresAt: new Date(viewingDate.getTime() + 1 * 60 * 1000).toISOString(),
         users: [],
       };
-      writeBookings(bookings);
+      writeWatchPartiesData(watchPartiesData);
 
       await interaction.reply({
-        content: 'Annonce cinéma publiée avec billetterie.',
+        content: 'Annonce publiée avec billetterie.',
         flags: MessageFlags.Ephemeral,
       });
     } catch (error) {
-      console.error('Erreur /movie avec TMDb :', error);
+      console.error('Erreur /watch avec TMDb :', error);
 
       return interaction.reply({
         content: 'Une erreur est survenue avec TMDb.',
