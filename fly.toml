@@ -1,4 +1,4 @@
-app = "barbara"
+app = "chao-bot"
 primary_region = "cdg"
 
 [build]
